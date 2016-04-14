@@ -25,21 +25,24 @@ A [fully general expression](https://github.com/elm-lang/elm-compiler/blob/0.16/
 
 A Declaration is anything that can be at the top level within a module: a definition, a union type, a type alias, a port, an infix declaration. There is also code for patterns, variables, literals, and types.
 
-## Parse
-To come
+### Parse
+Parsing is the first stage of compilation, and is built around the Parsec library. Parsing is organized by parsers for expressions, declarations, literals, types, etc. The `IParser a` type is a parser that attempts to parse a string into an `a` (think JSON decoders). The parser's job is to transform valid code into the AST, and to detect and provide helpful error messages for invalid code.
 
 (Is `Validate.hs` not used anywhere?)
 
-## Canonicalize
-To come
+### Canonicalize
+Canonicalization enriches the AST with more information in preparation for type inference. It determines what is visible where, and ensures there are no scoping problems. Canonicalization also sorts declarations by dependency.
 
-## Type Inference
-To come
+### Type Inference
+There's no shortage of academic papers on type inference, and what Elm has is relatively basic, but still quite complex. Type inference is a constraint-solving algorithm that works by unifying constraints to produce the most general possible type given the constraints.
 
-## Nitpick
-To come
+(I don't really know what's going on but Evan had some tidbits here: https://github.com/elm-lang/elm-compiler/issues/1281)
 
-## Generate
-To come
+### Nitpick
+Nitpick is a collection of mostly-unrelated checks that happen after type inference. Nitpicking verifies the type of `main`, adds warnings for missing type annotations, and (I think?) flags inexhaustive pattern matches.
 
+### Generate
+Code generation traverses the AST and outputs JavaScript, with help from the `Language.ECMAScript3` Haskell package.
+
+(Where are `.elmi` and `.elmo` temporary files generated and read? How are third-party libraries integrated?)
 
