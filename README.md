@@ -10,13 +10,15 @@ The [entry point](https://github.com/elm-lang/elm-compiler/blob/0.16/src/Compile
 * Parse the source code
 * "Canonicalize all variables, pinning down where they came from"
 * Run type inference
-* Nitpick: a round of checks after type inference. This includes warning on missing annotations and verifying the type of `main`.
+* Nitpick (miscellaneous checks)
 * Optimization
 * Code generation
 
-This process happen inside the `Result` type (defined [here](https://github.com/elm-lang/elm-compiler/blob/0.16/src/Reporting/Result.hs)). This is like Elm's `Result` type but on steroids, with lots of places to put information about errors. It's also declared as a monad, which for our purposes makes it work well with chained operations (i.e. bail out if there are any errors).
+This process happen inside the `Result` type (defined [here](https://github.com/elm-lang/elm-compiler/blob/0.16/src/Reporting/Result.hs)). This is like Elm's `Result` type but on steroids, with lots of places to put information about errors. It's also declared as a monad, which for our purposes makes it work well with chained operations (i.e. bail out if there are any errors), and allows the use of [do notation](https://en.wikibooks.org/wiki/Haskell/do_notation).
 
 `Result` is one of many tools defined under `Reporting` which are used to manage errors. A `Report` represents some kind of error that gets printed when your program fails to compile. A `Region` describes the place in the code where the error happened; other types can be bundled with `Region` using `Located a` defined `Reporting/Annotation.hs`. The kinds of errors are descibed in `Reporting/Error.hs` which farms them out to submodules: Canonicalize, Docs, Pattern, Syntax, and Type. Errors can be rendered to human-readable text or to JSON (by `--format=json` but that might not actually work?).
+
+Error detection starts by examining small pieces of code (parsing characters, duplicate record fields), expands out to larger ones (name and type conflicts within and across modules), and then focuses back in on specific things (the type of main, exhaustive pattern matches, documentation).
 
 ### AST
 The Abstract Syntax Tree is the main intermediate representation of code. It is used throughout the stages of compilation.
@@ -28,7 +30,7 @@ A Declaration is anything that can be at the top level within a module: a defini
 ### Parse
 Parsing is the first stage of compilation, and is built around the Parsec library. Parsing is organized by parsers for expressions, declarations, literals, types, etc. The `IParser a` type is a parser that attempts to parse a string into an `a` (think JSON decoders). The parser's job is to transform valid code into the AST, and to detect and provide helpful error messages for invalid code.
 
-(Is `Validate.hs` not used anywhere?)
+The [parser entry point](https://github.com/elm-lang/elm-compiler/blob/0.16/src/Parse/Parse.hs#L23-L41) validates (`Validate.hs`) the declarations for syntax errors (not including parse errors). Such errors include type annotations missing definitions, ports without annotations, duplicate report field names, and too many/too few type variables. Validation also ensures that ports do not occur outside of the main module; the `isRoot` parameter refers to the root module (i.e. Main), not the root user.
 
 ### Canonicalize
 Canonicalization enriches the AST with more information in preparation for type inference. It determines what is visible where, and ensures there are no scoping problems. Canonicalization also sorts declarations by dependency.
