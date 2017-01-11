@@ -31,32 +31,45 @@ You can trace the points at which it enters the Elm compiler codebase in [Compil
 The [entry point](https://github.com/elm-lang/elm-compiler/blob/0.16/src/Compile.hs) of the compiler lists various passes over the source. (If you're new to compilers, read [this](https://github.com/thejameskyle/the-super-tiny-compiler).)
 
 * Parse the source code
-* "Canonicalize all variables, pinning down where they came from"
+* Canonicalize all variables, pinning down where they came from
 * Run type inference
 * Nitpick (miscellaneous checks)
 * Optimization
 * Code generation
 
-This process happen inside the `Result` type (defined [here](https://github.com/elm-lang/elm-compiler/blob/0.16/src/Reporting/Result.hs)). This is like Elm's `Result` type but on steroids, with lots of places to put information about errors. It's also declared as a monad, which for our purposes makes it work well with chained operations (i.e. bail out if there are any errors), and allows the use of [do notation](https://en.wikibooks.org/wiki/Haskell/do_notation).
+The manager processes that run these phases can be found in the [Elm](https://github.com/elm-lang/elm-compiler/tree/master/src/Elm) directory. The entry point of the compiler is [Compiler.hs](https://github.com/elm-lang/elm-compiler/blob/master/src/Elm/Compiler.hs).
 
-`Result` is one of many tools defined under `Reporting` which are used to manage errors. A `Report` represents some kind of error that gets printed when your program fails to compile. Evan's 0.18 release greatly improved Elm's error reporting, and this is really one of the outstanding aspects of the Elm compiler.
+The compile process happen inside the [Result](https://github.com/elm-lang/elm-compiler/blob/0.16/src/Reporting/Result.hs) type. This is like Elm's `Result` type but on steroids, with lots of places to put information about errors. It's also declared as a monad, which for our purposes makes it work well with chained operations (i.e. bail out if there are any errors), and allows the use of [do notation](https://en.wikibooks.org/wiki/Haskell/do_notation). If this doesn't make sense to you, see [haskell-resources](haskell-resources.md) for a refresher on monads.
+
+`Result` is one of many tools defined under `Reporting` which are used to manage errors. A `Report` represents some kind of error that gets printed when your program fails to compile.
 
 A `Region` describes the place in the code where the error happened; other types can be bundled with `Region` using `Located a` defined [Reporting/Annotation.hs](https://github.com/elm-lang/elm-compiler/blob/master/src/Reporting/Annotation.hs). The kinds of errors are descibed in [Reporting/Error.hs](https://github.com/elm-lang/elm-compiler/blob/master/src/Reporting/Error.hs) which farms them out to submodules: Canonicalize, Docs, Pattern, Syntax, and Type. Errors can be rendered to human-readable text or to JSON (by `--format=json` but that might not actually work?).
 
 Error detection starts by examining small pieces of code (parsing characters, duplicate record fields), expands out to larger ones (name and type conflicts within and across modules), and then focuses back in on specific things (the type of main, exhaustive pattern matches, documentation).
 
+Evan's 0.18 release greatly improved Elm's error reporting, and this is really one of the outstanding aspects of the Elm compiler: the compiler is very good at providing meaningful errors. See [Syntax.hs](https://github.com/elm-lang/elm-compiler/blob/master/src/Reporting/Error/Syntax.hs) for some examples of the helpful error messages Elm provides.
+
 ### AST
 The Abstract Syntax Tree is the main intermediate representation of code. It is used throughout the stages of compilation.
 
-#### Expresssions
+##### Expressions
 
 A [fully general expression](https://github.com/elm-lang/elm-compiler/blob/0.16/src/AST/Expression/General.hs) has four type variables describing different pieces of information. An `Expr'` is a giant union type of possible Elm expressions, such as `Literal`, `Binop`, `Cmd`, `OutgoingPort`, etc. `Expr` is this, but with a top-level annotation that contains useful information about where the expression came from, and other debugging information. There are Source, Valid and Canonical versions of expressions, which represent the expressions at different stages of the compiler lifecycle: Source expressions are created by the parser, and when the compiler is complete they have been resolved to Canonical expressions.
 
 These versions are type aliases that provide specific types for the type variables. Optimized expressions, apparently because they need less information, are a separate union type.
 
-#### Declarations
+##### Variables
+
+[Variable.hs](https://github.com/elm-lang/elm-compiler/blob/master/src/AST/Variable.hs) shows how variables are represented in the AST, and provides some utility functions for both general and inbuilt variables.
+
+##### Types
+
+Elm's type system is relatively simple (which is to say, not nearly as complex as Haskell's). [Type.hs](https://github.com/elm-lang/elm-compiler/blob/master/src/AST/Type.hs) provides definitions for Raw and Canonical types, where canonical means the same as it does in the case of expressions; that the type representation is fully annotated.
+
+##### Declarations
 
 A Declaration is anything that can be at the top level within a module: a definition, a union type, a type alias, a port, an infix declaration. There is also code for patterns, variables, literals, and types.
+
 
 ### Parse
 Parsing is the first stage of compilation, and is built around the Parsec library. Parsing is organized by parsers for expressions, declarations, literals, types, etc. The `IParser a` type is a parser that attempts to parse a string into an `a` (think JSON decoders). The parser's job is to transform valid code into the AST, and to detect and provide helpful error messages for invalid code.
@@ -77,5 +90,17 @@ Nitpick is a collection of mostly-unrelated checks that happen after type infere
 ### Generate
 Code generation traverses the AST and outputs JavaScript, with help from the `Language.ECMAScript3` Haskell package. The code is triggered from [Compiler.hs](https://github.com/elm-lang/elm-compiler/blob/master/src/Elm/Compiler.hs), entering the Generate directory through the `generate` function in [JavaScript.hs](https://github.com/elm-lang/elm-compiler/blob/master/src/Generate/JavaScript.hs). Much of the generate process occurs in [elm-make](https://github.com/elm-lang/elm-make), including the generation of `.elmi` and `.elmo` files, crawling dependencies, and the provision of [boiler JS code](https://github.com/elm-lang/elm-make/blob/master/src/Pipeline/Generate.hs) necessary for the JS runtime.
 
-(Where are `.elmi` and `.elmo` temporary files generated and read? How are third-party libraries integrated?)
+The generated JS is a combination of two different definition sets, the `defsList` (Elm code generated from libraries and source), and the `managerStmts` (effects managers).
+
+##### defsList
+
+The list of definitions is generated the the [generateDef function](https://github.com/elm-lang/elm-compiler/blob/master/src/Generate/JavaScript/Expression.hs#L89). Essentially what this does is delegate to a big `case` statement that transforms the list of Elm expressions into JS expressions, in Haskell types, through the [ECMAScript 3 package](https://hackage.haskell.org/package/language-ecmascript). These expressions are then 'printed' to [stmtsToText function](https://github.com/elm-lang/elm-compiler/blob/master/src/Generate/JavaScript/Builder.hs#L152) in [Builder.hs](https://github.com/elm-lang/elm-compiler/blob/master/src/Generate/JavaScript/Builder.hs). Most of the hard work in this translation is contained in the ECMAScript definitions, which allow the Elm compiler to meaningfully represent a JS program in Haskell types.
+
+The JS code that is generated is then padded by some boilerplate JS in elm-make, which does all the work of setting up the connections between the browser and the code generated by the Elm compiler. It is elm-make that generates elm-stuff and other build artifacts associated with the actual CLI interface.
+
+##### managerStmts
+
+To come: what exactly are effects managers? [This tutorial on effects](https://guide.elm-lang.org/effect_managers/) is incomplete, which makes it hard to tell exactly.
+
+
 
