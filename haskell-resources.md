@@ -1,0 +1,7 @@
+# Haskell Resources
+
+For those new to Haskell, the Elm compiler codebase can be daunting. Haskell is particularly well-suited for writing compilers. Given that a compiler typically requires the generation of one large data structure, or AST, from source code, Haskell's type system comes in handy as a way to reliably handle errors and various cases of difference in the source language.
+
+ - [Learn You a Haskell for Great Good](http://learnyouahaskell.com/) provides a basic introduction to Haskell, demonstrating simple use cases and pointing at the nuances of the language. It's a great place to get started if you're new to Haskell.
+ - [Real World Haskell](http://book.realworldhaskell.org/read/) is a tutorial showing how to work with real data in Haskell, demonstrating how it can actually be used to write useful programs. This is a great follow-up to *Learn You a Haskell for Great Good*, and introduces many of the techniques used in the Elm compiler.
+ - [All About Monads](https://wiki.haskell.org/All_About_Monads) is a handy piece of documentation that goes into depth about monads. Monads are a very important construction in the Elm compiler, as they are essentially what allows the compiler to build up state over the course of its execution, and also how it deals with files, and all the other useful 'side effects' the compiler performs.
